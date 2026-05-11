@@ -9,6 +9,7 @@ pub mod sanitize;
 pub mod subagent;
 
 use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use chrono::Utc;
@@ -124,7 +125,16 @@ impl Runtime {
         config: &FrankClawConfig,
         sessions: Arc<dyn SessionStore>,
     ) -> Result<Self> {
-        let providers = build_providers(config)?;
+        let state_dir = default_state_dir();
+        Self::from_config_with_state_dir(config, sessions, &state_dir).await
+    }
+
+    pub async fn from_config_with_state_dir(
+        config: &FrankClawConfig,
+        sessions: Arc<dyn SessionStore>,
+        state_dir: &Path,
+    ) -> Result<Self> {
+        let providers = build_providers(config, state_dir)?;
         Self::from_providers_with_models(config, sessions, providers).await
     }
 
@@ -1883,6 +1893,7 @@ fn parse_tool_arguments(tool_call: &ToolCallResponse) -> Result<serde_json::Valu
 
 fn build_providers(
     config: &FrankClawConfig,
+    state_dir: &Path,
 ) -> Result<Vec<(Arc<dyn frankclaw_core::model::ModelProvider>, Vec<String>)>> {
     let mut providers: Vec<(Arc<dyn frankclaw_core::model::ModelProvider>, Vec<String>)> =
         Vec::new();
@@ -1963,15 +1974,12 @@ fn build_providers(
                     provider.models.clone(),
                 )?),
                 "github-copilot" | "copilot" => {
-                    let state_dir = dirs::data_dir()
-                        .unwrap_or_else(|| std::path::PathBuf::from("."))
-                        .join("frankclaw");
                     let github_token =
-                        frankclaw_models::copilot::load_github_token(&state_dir)?;
+                        frankclaw_models::copilot::load_github_token(state_dir)?;
                     Arc::new(CopilotProvider::new(
                         provider.id.clone(),
                         github_token,
-                        &state_dir,
+                        state_dir,
                         provider.models.clone(),
                     ))
                 }
@@ -1989,6 +1997,12 @@ fn build_providers(
     }
 
     Ok(providers)
+}
+
+fn default_state_dir() -> PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("frankclaw")
 }
 
 fn load_agent_skills(config: &FrankClawConfig) -> Result<HashMap<AgentId, Vec<SkillManifest>>> {
@@ -2118,6 +2132,46 @@ mod tests {
                 seen_requests: Mutex::new(Vec::new()),
             }
         }
+    }
+
+    #[test]
+    fn build_providers_loads_copilot_credentials_from_supplied_state_dir() {
+        let state_dir = std::env::temp_dir().join(format!(
+            "frankclaw-runtime-copilot-state-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let empty_state_dir = std::env::temp_dir().join(format!(
+            "frankclaw-runtime-copilot-empty-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&state_dir).expect("state dir should create");
+        std::fs::create_dir_all(&empty_state_dir).expect("empty state dir should create");
+        frankclaw_models::copilot::store_github_token(
+            &state_dir,
+            &SecretString::from("github-token-from-configured-state".to_string()),
+        )
+        .expect("token should store");
+
+        let mut config = FrankClawConfig::default();
+        config.models.providers = vec![ProviderConfig {
+            id: "copilot".into(),
+            api: "github-copilot".into(),
+            base_url: None,
+            api_key_ref: None,
+            models: vec!["gpt-4o".into()],
+            cooldown_secs: 1,
+        }];
+
+        let providers =
+            build_providers(&config, &state_dir).expect("configured state dir should load token");
+        assert_eq!(providers.len(), 1);
+        assert!(
+            build_providers(&config, &empty_state_dir).is_err(),
+            "missing token in supplied state dir should fail"
+        );
+
+        let _ = std::fs::remove_dir_all(state_dir);
+        let _ = std::fs::remove_dir_all(empty_state_dir);
     }
 
     #[async_trait]

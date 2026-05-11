@@ -371,7 +371,7 @@ async fn main() -> anyhow::Result<()> {
             let config = load_config(cli.config.as_deref(), &state_dir)?;
             config.validate()?;
             let sessions = open_sessions(&state_dir)?;
-            let runtime = build_runtime(&config, sessions.clone()).await?;
+            let runtime = build_runtime(&config, &state_dir, sessions.clone()).await?;
 
             if use_tui {
                 tui::run_tui(
@@ -419,9 +419,10 @@ async fn main() -> anyhow::Result<()> {
                     .context(t!("ctx.failed_open_sessions").to_string())?,
             );
             let runtime = std::sync::Arc::new(
-                frankclaw_runtime::Runtime::from_config(
+                frankclaw_runtime::Runtime::from_config_with_state_dir(
                     &config,
                     sessions.clone() as std::sync::Arc<dyn frankclaw_core::session::SessionStore>,
+                    &state_dir,
                 )
                 .await
                 .context(t!("ctx.failed_init_runtime").to_string())?,
@@ -497,7 +498,7 @@ async fn main() -> anyhow::Result<()> {
             let config = load_config(cli.config.as_deref(), &state_dir)?;
             config.validate()?;
             let sessions = open_sessions(&state_dir)?;
-            let runtime = build_runtime(&config, sessions).await?;
+            let runtime = build_runtime(&config, &state_dir, sessions).await?;
             let channels = frankclaw_channels::load_from_config(&config)
                 .context(t!("ctx.failed_load_channels").to_string())?;
             let exposure = frankclaw_gateway::auth::assess_exposure(&config)?;
@@ -692,7 +693,7 @@ async fn main() -> anyhow::Result<()> {
             let config = load_config(cli.config.as_deref(), &state_dir)?;
             config.validate()?;
             let sessions = open_sessions(&state_dir)?;
-            let runtime = build_runtime(&config, sessions.clone()).await?;
+            let runtime = build_runtime(&config, &state_dir, sessions.clone()).await?;
 
             let response = runtime
                 .chat(frankclaw_runtime::ChatRequest {
@@ -818,7 +819,7 @@ async fn main() -> anyhow::Result<()> {
             let config = load_config(cli.config.as_deref(), &state_dir)?;
             config.validate()?;
             let sessions = open_sessions(&state_dir)?;
-            let runtime = build_runtime(&config, sessions).await?;
+            let runtime = build_runtime(&config, &state_dir, sessions).await?;
 
             for model in runtime.list_models() {
                 println!("{} ({:?})", model.id, model.api);
@@ -829,7 +830,7 @@ async fn main() -> anyhow::Result<()> {
             let config = load_config(cli.config.as_deref(), &state_dir)?;
             config.validate()?;
             let sessions = open_sessions(&state_dir)?;
-            let runtime = build_runtime(&config, sessions).await?;
+            let runtime = build_runtime(&config, &state_dir, sessions).await?;
             let tools = runtime.list_tools(
                 agent
                     .as_ref()
@@ -851,7 +852,7 @@ async fn main() -> anyhow::Result<()> {
             let config = load_config(cli.config.as_deref(), &state_dir)?;
             config.validate()?;
             let sessions = open_sessions(&state_dir)?;
-            let runtime = build_runtime(&config, sessions).await?;
+            let runtime = build_runtime(&config, &state_dir, sessions).await?;
             let arguments = match args {
                 Some(raw) => serde_json::from_str(&raw)
                     .context(t!("ctx.tool_args_invalid").to_string())?,
@@ -874,7 +875,7 @@ async fn main() -> anyhow::Result<()> {
             let config = load_config(cli.config.as_deref(), &state_dir)?;
             config.validate()?;
             let sessions = open_sessions(&state_dir)?;
-            let runtime = build_runtime(&config, sessions).await?;
+            let runtime = build_runtime(&config, &state_dir, sessions).await?;
             let activity = runtime
                 .tool_activity(&frankclaw_core::types::SessionKey::from_raw(session), limit)
                 .await?;
@@ -903,7 +904,7 @@ async fn main() -> anyhow::Result<()> {
             let config = load_config(cli.config.as_deref(), &state_dir)?;
             config.validate()?;
             let sessions = open_sessions(&state_dir)?;
-            let runtime = build_runtime(&config, sessions).await?;
+            let runtime = build_runtime(&config, &state_dir, sessions).await?;
             let skills = runtime.list_skills(
                 agent
                     .as_ref()
@@ -1026,7 +1027,7 @@ async fn main() -> anyhow::Result<()> {
             let config = load_config(cli.config.as_deref(), &state_dir)?;
             config.validate()?;
             let sessions = open_sessions(&state_dir)?;
-            let runtime = build_runtime(&config, sessions.clone()).await?;
+            let runtime = build_runtime(&config, &state_dir, sessions.clone()).await?;
 
             eprintln!("{}", t!("acp.starting"));
             eprintln!("{}", t!("acp.ready"));
@@ -4280,12 +4281,14 @@ fn open_cron_service(
 
 async fn build_runtime(
     config: &frankclaw_core::config::FrankClawConfig,
+    state_dir: &std::path::Path,
     sessions: std::sync::Arc<frankclaw_sessions::SqliteSessionStore>,
 ) -> anyhow::Result<std::sync::Arc<frankclaw_runtime::Runtime>> {
     Ok(std::sync::Arc::new(
-        frankclaw_runtime::Runtime::from_config(
+        frankclaw_runtime::Runtime::from_config_with_state_dir(
             config,
             sessions as std::sync::Arc<dyn frankclaw_core::session::SessionStore>,
+            state_dir,
         )
         .await
         .context(t!("ctx.failed_init_runtime").to_string())?,

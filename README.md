@@ -248,18 +248,35 @@ cp frankclaw.toml.example frankclaw.toml
 cp .env.docker.example .env.docker
 # Edit .env.docker — add API keys, channel tokens
 
-# 3. Set up Cloudflare tunnel (for public webhook access)
+# 3. If you use GitHub Copilot, authenticate inside the Docker state volume
+docker compose run --rm gateway login copilot
+
+# Then add a Copilot provider to frankclaw.toml:
+# [models]
+# default_model = "gpt-4o"
+#
+# [[models.providers]]
+# id = "copilot"
+# api = "github-copilot"
+# models = ["gpt-4o"]
+
+# 4. If agents need a workspace, mount it in docker-compose.yml and use
+# the same container path in frankclaw.toml:
+# [agents.agents.default]
+# workspace = "/workspace"
+
+# 5. Set up Cloudflare tunnel (for public webhook access)
 cp docker/cloudflared/config.yml.example docker/cloudflared/config.yml
 # Edit config.yml — set your hostname
 cp ~/.cloudflared/<tunnel-id>.json docker/cloudflared/credentials.json
 cp ~/.cloudflared/cert.pem docker/cloudflared/cert.pem
 chmod 644 docker/cloudflared/credentials.json docker/cloudflared/cert.pem
 
-# 4. Start everything
+# 6. Start everything
 docker compose up -d
 ```
 
-The gateway binds to `0.0.0.0` inside the container (LAN mode) so cloudflared can reach it. Auth is required — set a token in `frankclaw.toml`. To access the gateway directly from the host (for debugging), uncomment the `ports` section in `docker-compose.yml`.
+The gateway binds to `0.0.0.0` inside the container (LAN mode) so cloudflared can reach it. Auth is required — set a token in `frankclaw.toml`. To access the gateway directly from the host (for debugging), uncomment the `ports` section in `docker-compose.yml`. Copilot credentials, sessions, media, and logs are kept in the `frankclaw-state` volume mounted at `/var/lib/frankclaw`.
 
 Then allow browser tools on an agent:
 

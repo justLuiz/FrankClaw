@@ -29,6 +29,11 @@ services:
     volumes:
       - ./frankclaw.toml:/config/frankclaw.toml:ro
       - frankclaw-state:/var/lib/frankclaw
+      # Optional: mount the workspace used by agents.
+      # Match this path in frankclaw.toml:
+      #   [agents.agents.default]
+      #   workspace = "/workspace"
+      # - ./workspace:/workspace
     # Uncomment to access the gateway directly from the host:
     # ports:
     #   - "127.0.0.1:18789:18789"
